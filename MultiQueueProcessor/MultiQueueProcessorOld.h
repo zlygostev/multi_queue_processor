@@ -30,7 +30,6 @@ public:
 	{
 		std::lock_guard<std::recursive_mutex> lock{ mtx };
 		auto iter = consumers.find(id);
-		cout << "Subscribe by key " << id;
 		if (iter != consumers.end())
 		{
 			throw std::logic_error("The queue with proposed key is already processing by another consumer.");

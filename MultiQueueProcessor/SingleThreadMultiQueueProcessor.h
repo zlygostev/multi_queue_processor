@@ -63,7 +63,7 @@ public:
 			iter = res.first;
 		}
 
-		if (iter->second.size() >= MaxCapacity)
+		if (iter->second.size() >= MaxQueueCapacity)
 		{
 			throw std::overflow_error("on enqueue: Max capacity of queue is reached");
 		}

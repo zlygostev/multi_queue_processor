@@ -3,6 +3,6 @@
     "",
     "\\MultiQueueProcessor"
   ],
-  "SelectedNode": "\\MultiQueueProcessor\\FixedThreadsMultiQueueProcessor.h",
+  "SelectedNode": "\\MultiQueueProcessor\\MultiQueueProcessor.cpp",
   "PreviewInSolutionExplorer": false
 }

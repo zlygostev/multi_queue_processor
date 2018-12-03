@@ -32,16 +32,16 @@ template<typename Key, typename Value,
 	size_t MaxQueuesCapacity = MAX_QUEUES_CAPACITY,
 	typename Queue = Queue<Key, MaxQueueCapacity>,
 	typename QueueProcessorT = SingleQueueProcessor<Key, Value, Queue>>
-struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
+struct ThreadPerConsumer_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 {
 
 	using QueueNodeT = QueueNode<QueueProcessorT>;
 
-	ThreadPerQueue_MultiQueueProcessor(std::chrono::milliseconds jobsWaitingTimeout = std::chrono::milliseconds(2000))
+	ThreadPerConsumer_MultiQueueProcessor(std::chrono::milliseconds jobsWaitingTimeout = std::chrono::milliseconds(2000))
 			:m_running(true), m_jobsWaitingTimeout(jobsWaitingTimeout)
 	{}
 
-	virtual ~ThreadPerQueue_MultiQueueProcessor()
+	virtual ~ThreadPerConsumer_MultiQueueProcessor()
 	{
 		StopProcessing();
 	};
@@ -62,7 +62,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::unique_lock<decltype(m_multiQueueMutex)> multiQueueLock(m_multiQueueMutex);
 		if (!m_running)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor:Subscribe Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor:Subscribe Attempt of run a method of the object when it is already stopped.");
 		}
 		auto iter = m_multiQueue.find(id);
 		if (iter == m_multiQueue.end())
@@ -78,7 +78,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::lock_guard<decltype(iter->second.mtx)> queueLock{ iter->second.mtx };
 		if (!iter->second.queueProcessor)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor:Subscribe Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor:Subscribe Attempt of run a method of the object when it is already stopped.");
 		}
 		iter->second.queueProcessor->Subscribe(id, consumer);
 	}
@@ -88,7 +88,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::unique_lock<decltype(m_multiQueueMutex)> multiQueueLock(m_multiQueueMutex);
 		if (!m_running)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor:Unsubscribe Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor:Unsubscribe Attempt of run a method of the object when it is already stopped.");
 		}
 		auto iter = m_multiQueue.find(id);
 		if (iter == m_multiQueue.end())
@@ -109,7 +109,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::unique_lock<decltype(m_multiQueueMutex)> multiQueueLock(m_multiQueueMutex);
 		if (!m_running)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor:Enqueue Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor:Enqueue Attempt of run a method of the object when it is already stopped.");
 		}
 		auto iter = m_multiQueue.find(id);
 		if (iter == m_multiQueue.end())
@@ -118,14 +118,14 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 			{
 				throw std::overflow_error("Max capacity of queues is reached");
 			}
-			auto insertedState = m_multiQueue.insert(make_pair(static_cast<const Key>(id), QueueNodeT(m_jobsWaitingTimeout)));
+			auto insertedState = m_multiQueue.emplace(make_pair(static_cast<const Key>(id), QueueNodeT(m_jobsWaitingTimeout)));
 			iter = insertedState.first;
 		}
 		multiQueueLock.unlock();
 		std::lock_guard<decltype(iter->second.mtx)> queueLock{ iter->second.mtx };
 		if (!iter->second.queueProcessor)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
 		}
 		iter->second.queueProcessor->Enqueue(std::move(value));
 	}
@@ -135,7 +135,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::unique_lock<decltype(m_multiQueueMutex)> multiQueueLock(m_multiQueueMutex);
 		if (!m_running)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
 		}
 		auto iter = m_multiQueue.find(id);
 
@@ -149,7 +149,7 @@ struct ThreadPerQueue_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		std::lock_guard<decltype(iter->second.mtx)> queueLock{ iter->second.mtx };
 		if (!iter->second.queueProcessor)
 		{
-			throw std::runtime_error("ThreadPerQueue_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
+			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
 		}
 		Value tmpVal;
 		if (!iter->second.queueProcessor->Dequeue(tmpVal))

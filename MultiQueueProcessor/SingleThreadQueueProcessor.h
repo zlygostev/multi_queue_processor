@@ -46,13 +46,15 @@ struct SingleQueueProcessor : ISingleQueueProcessor< Key, Value, Queue>
 		{
 			throw std::invalid_argument("The queue already has consumer");
 		}
+
 		if (!consumer)
 		{
-			throw std::invalid_argument("Consumer should not be null");
+			throw std::invalid_argument("Consumer should be not null");
 		}
-		auto pKey = new Key(key);
-		m_key.reset(pKey);
+
+		m_key.reset(new Key(key));
 		m_consumer = consumer;
+
 		//Start Job
 		m_isStop = false;
 		m_thread = make_unique<std::thread>(std::bind(&SingleQueueProcessor::Proccess, this));
@@ -61,10 +63,9 @@ struct SingleQueueProcessor : ISingleQueueProcessor< Key, Value, Queue>
 	void Unsubscribe()
 	{
 		m_isStop = true;
-		{
-			std::lock_guard<decltype(m_jobsWaitingMutex)> jobsWaitingLock{ m_jobsWaitingMutex };
-			m_jobsWaitingCV.notify_all();
-		}
+		m_jobsWaitingCV.notify_one();
+
+		//Wait end of consumption process inside a function 
 		std::lock_guard<decltype(m_mutex)> lock(m_mutex);
 		if (m_thread)
 		{
@@ -99,7 +100,6 @@ private:
 
 	void NewEventCome() 
 	{
-		std::lock_guard<decltype(m_jobsWaitingMutex)> lock(m_jobsWaitingMutex);
 		m_jobsWaitingCV.notify_one();
 	}
 

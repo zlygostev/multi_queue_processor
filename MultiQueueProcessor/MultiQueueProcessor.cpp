@@ -1,8 +1,8 @@
 ﻿// MultiQueueProcessor.cpp : Defines the entry point for the application.
 //
 
-#include "MultiQueueProcessor.h"
-#include "MultiQueueProcessorOld.h"
+#include "ThreadPerConsumerMultiQueueProcessor.h"
+#include "SingleThreadMultiQueueProcessor.h"
 #include "IConsumer.h"
 #include <iostream>
 #include <string>
@@ -12,9 +12,9 @@
 
 using namespace std;
 
-using ScheduleChart = std::map < std::string, std::chrono::microseconds> ;
+using ScheduleChart = std::map < std::string, std::chrono::milliseconds> ;
 
-using BattleChart = std::map < std::string, std::pair<std::chrono::microseconds, std::chrono::microseconds>>;
+using BattleChart = std::map < std::string, std::pair<std::chrono::milliseconds, std::chrono::milliseconds>>;
 
 template<typename Key, typename Value>
 struct QuickConsumer : IConsumer<Key, Value>
@@ -124,10 +124,10 @@ ScheduleChart OneQueue_Fullfill_And_WaitTillTheEndWithOneConsumer(Factory& facto
 		if (i == 0)
 		{
 			auto firstItemInQueueTime = std::chrono::system_clock::now();
-			chart["First item in queue"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startFullfill);
+			chart["First item in queue"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startFullfill);
 		}
 	}
-	chart["Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startFullfill);
+	chart["Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startFullfill);
 	std::unique_ptr<Consumer> consumer = std::move(factory.getConsumer(key));
 	auto startConsuming = std::chrono::system_clock::now();
 	mq->Subscribe(key, consumer->get());
@@ -135,13 +135,13 @@ ScheduleChart OneQueue_Fullfill_And_WaitTillTheEndWithOneConsumer(Factory& facto
 	{
 		throw std::runtime_error("Items are not consumed at time");
 	}
-	chart["Items are consumed"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startConsuming);
+	chart["Items are consumed"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startConsuming);
 	auto startOfStopping = std::chrono::system_clock::now();
 	mq->StopProcessing();
-	chart["MultiQueue stop"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startOfStopping);
+	chart["MultiQueue stop"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startOfStopping);
 	auto startDestroy = std::chrono::system_clock::now();
 	mq.reset();
-	chart["MultiQueue destroy"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startDestroy);
+	chart["MultiQueue destroy"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startDestroy);
 	return chart;
 }
 
@@ -164,7 +164,7 @@ BattleChart BattleTestOneQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer(co
 	for (auto item : schedule1)
 	{
 		result[item.first] = std::pair<decltype(item.second), decltype(item.second)>(schedule1[item.first], schedule2[item.first]);
-		std::cout << item.first << ": " << schedule1[item.first].count() << " vs " << schedule2[item.first].count()  <<" microseconds" << std::endl;
+		std::cout << item.first << ": " << schedule1[item.first].count() << " vs " << schedule2[item.first].count()  <<" milliseconds" << std::endl;
 	}
 	std::cout << std::endl;
 	return result;
@@ -277,7 +277,7 @@ private:
 			}
 		}
 		m_state = WorkerState::FULLFILLED;
-		//m_chart["Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startFullfill);
+		//m_chart["Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startFullfill);
 		m_observer.OnFinishFullfilling(m_queuesCount);
 	}
 
@@ -305,7 +305,7 @@ private:
 				throw std::runtime_error(ss.str());
 			}
 		}
-		//m_chart["Items are consumed"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startConsuming);
+		//m_chart["Items are consumed"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startConsuming);
 		m_state = WorkerState::CONSUMED;
 		m_observer.OnFinishConsuming(m_queuesCount);
 	}
@@ -432,7 +432,7 @@ ScheduleChart MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer(Factory& factor
 			}
 		}
 		//std::bind(&AreWorkersFullfilled<decltype(workers)>, &workers)) == true);
-		chart["1. Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startFullfill);
+		chart["1. Queue is Fullfilled"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startFullfill);
 		waitLock.unlock();
 
 		auto startConsuming = std::chrono::system_clock::now();
@@ -451,13 +451,13 @@ ScheduleChart MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer(Factory& factor
 
 		}
 
-		chart["2. Items are consumed"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startConsuming);
+		chart["2. Items are consumed"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startConsuming);
 		auto startOfStopping = std::chrono::system_clock::now();
 		mq->StopProcessing();
-		chart["3. MultiQueue stop"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startOfStopping);
+		chart["3. MultiQueue stop"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startOfStopping);
 		auto startDestroy = std::chrono::system_clock::now();
 		mq.reset();
-		chart["4. MultiQueue destroy"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - startDestroy);
+		chart["4. MultiQueue destroy"] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startDestroy);
 	}
 	catch (const std::exception& ex)
 	{
@@ -484,30 +484,29 @@ void BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer(size_t 
 	for (auto item : schedule1)
 	{
 		result[item.first] = std::pair<decltype(item.second), decltype(item.second)>(schedule1[item.first], schedule2[item.first]);
-		std::cout << item.first << ": " << schedule1[item.first].count() << " vs " << schedule2[item.first].count() << " microseconds" << std::endl;
+		std::cout << item.first << ": " << schedule1[item.first].count() << " vs " << schedule2[item.first].count() << " ms" << std::endl;
 	}
 	std::cout << std::endl;
 	//return result;
 
 }
 
-//README: Please, run and see output. It is a test of new stucture ThreadPerQueue_MultiQueueProcessor<Key, Value>
+//README: Please, run and see output. It is a test of new stucture ThreadPerConsumer_MultiQueueProcessor<Key, Value>
 // It was really limit time for implementation. That's why I have a lot of todo in code and comments in test below.
 int main()
 {
-	using OldIntMultiQueueProcT = MultiQueueProcessorOld<int, int>;
-	cout << "New vs Old multi queue implementation. Let's investigate a new runtime metrics. Scenarios:" << endl;
+	cout << "Multithreading processing vs processing in a single for a multi queue. Let's investigate a new runtime metrics. Scenarios:" << endl;
 	//cout << "New multi queue implementation. Let's investigate a new runtime metrics. Scenarios:" << endl;
 	//BattleTestOneQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-	//	ThreadPerQueue_MultiQueueProcessor<int, int, 1>,
-	//	OldIntMultiQueueProcT,
+	//	ThreadPerConsumer_MultiQueueProcessor<int, int, 1>,
+	//	OldIntMultiQueueProcT,cd ..
 	//	1>
 	//	("One Queue with one item processed by one consumer");
 
 
 	const size_t queueCapacity = 1000;
 	//BattleTestOneQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-	//	ThreadPerQueue_MultiQueueProcessor<int, int, queueCapacity>,
+	//	ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity>,
 	//	OldIntMultiQueueProcT,
 	//	queueCapacity>
 	//	("One Queue with 1000 items processed by one consumer");
@@ -525,26 +524,27 @@ int main()
 		stringstream ss;
 		ss << queues_count << " Queues:";
 		BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-			ThreadPerQueue_MultiQueueProcessor<int, int, queueCapacity>,
-			OldIntMultiQueueProcT,
+			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity>,
+			SingleThread_MultiQueueProcessor<int, int, queueCapacity>,
 			queueCapacity
 		>(
 			queues_count, threadsCount,
 			ss.str()
 			);
 		//ScheduleChart schedule1 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-		//	MultiQueueProcessorOld<int, int>, queueCapacity>(
+		//	SingleThread_MultiQueueProcessor<int, int>, queueCapacity>(
 		//		queues_count, threadsCount
 		//		);
 		//std::cout << ss.str() << std::endl;
 		//for (auto item : schedule1)
 		//{
-		//	std::cout << item.first << ": " << schedule1[item.first].count() << " microseconds" << std::endl;
+		//	std::cout << item.first << ": " << schedule1[item.first].count() << " milliseconds" << std::endl;
 		//}
 		//std::cout << std::endl;
 
 	}
-
+	std::cout << "Single thread realization is simple and optimized. It shows better results then more complicated multithreading realization.";
+	std::cout << "But the last one is a pretty raw solution just for now. Wait and see new releases.";
 	char i;
 	cin >> i;
 	return 0;

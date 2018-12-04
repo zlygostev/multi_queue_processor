@@ -561,7 +561,7 @@ int main()
 	}
 	cout << "Looks like Multi thread queue processing shows better results." << endl;
 	const size_t microseconds_consumption_time1 = 1000;// My computer can't wait  less 1.1 ms
-	cout << "Lets return a queue size back and add delay for a " << microseconds_consumption_time/1000 << " ms to consumer and repeat the first tests suit." << endl;
+	cout << "Lets return a queue size back and add delay for a " << microseconds_consumption_time1/1000 << " ms to consumer and repeat the first tests suit." << endl;
 	for (uint8_t power = 0; power < 5; power++)
 	{
 		size_t queues_count = static_cast<size_t>(1llu << power);
@@ -572,7 +572,7 @@ int main()
 			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity1>,
 			SingleThread_MultiQueueProcessor<int, int, queueCapacity1>,
 			queueCapacity1,
-			microseconds_consumption_time
+			microseconds_consumption_time1
 		>(queues_count, threadsCount, ss.str());
 	}
 	cout << "Looks like Multi thread queue processing is better again." << endl;

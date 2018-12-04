@@ -1,27 +1,45 @@
 #pragma once
-//Multithread queue interface
+
+struct QueueIsEmpty: std::logic_error
+{
+	QueueIsEmpty() :std::logic_error("The queue is empty. No more items.") {}
+	QueueIsEmpty(const std::string& ex):std::logic_error(ex) {}
+};
+
+
+
 template<typename Value, size_t MaxQueueCapacity>
 struct IQueue
 {
-	// Notification about a new item income. 
-	using NotifySubscriberT = std::function<void()>;
 
-	//struct TimeOutException : std::exception {};
-
-	IQueue(NotifySubscriberT notifySubscriber) :
-		m_notifySubscriber(notifySubscriber),
+	IQueue() :
 		m_maxCapacity(MaxQueueCapacity)
 	{}
 	virtual ~IQueue() = default;
 
+	//Should throw std::overflow_error if max capacity of queue is reached
 	virtual void Enqueue(Value&& value) = 0;
-	//Return false if there is no value
-	virtual bool Dequeue(Value& value) = 0;
+
+	//Should throw QueueIsEmpty if no more entries
+	virtual Value Dequeue() = 0;
 
 	virtual bool IsEmpty() = 0;
-	//virtual Value Dequeue(std::chrono::milliseconds timeout) = nullptr; //throw timeout exception. //TODO. Solve if it is really need
-	//virtual void Stop(const Key& key) = nullptr;//TODO. Solve if it is really need
+protected:
+	const size_t m_maxCapacity;
+};
+
+//Interface of queue with ability of notifications by new arrivals
+//Please run m_notifySubscriber() on successful Enqueue 
+template<typename Value, size_t MaxQueueCapacity>
+struct IQueueWithNotifications: IQueue<Value, MaxQueueCapacity>
+{
+	//Notification about a new item income. Please implement it as threadsafe outside if the queue is a multithreading
+	using NotifySubscriberT = std::function<void()>;
+
+	IQueueWithNotifications(NotifySubscriberT notifySubscriber) : IQueue(),
+		m_notifySubscriber(notifySubscriber)
+	{}
+	virtual ~IQueueWithNotifications() = default;
 protected:
 	NotifySubscriberT m_notifySubscriber;
-	const size_t m_maxCapacity;
 };

@@ -16,12 +16,10 @@ using ScheduleChart = std::map < std::string, std::chrono::milliseconds> ;
 
 using BattleChart = std::map < std::string, std::pair<std::chrono::milliseconds, std::chrono::milliseconds>>;
 
-template<typename Key, typename Value>
-struct QuickConsumer : IConsumer<Key, Value>
+template<typename Key, typename Value, size_t microseconds_consumption_time>
+struct QuickConsumer: IConsumer<Key, Value>
 {
-	//QuickConsumer(QuickConsumer&&c) : m_consumedCount(static_cast<size_t>(c.m_consumedCount))
-	//{
-	//};
+
 
 	QuickConsumer() :m_consumedCount(0)
 	{
@@ -30,6 +28,14 @@ struct QuickConsumer : IConsumer<Key, Value>
 	void Consume(Key id, const Value &value)
 	{
 		++m_consumedCount;
+		//do some work;
+		//std::this_thread::sleep_for(std::chrono::microseconds(microseconds_consumption_time));
+		{
+			std::mutex mtx;
+			std::unique_lock<std::mutex> lock(mtx);
+			std::condition_variable cv;
+			cv.wait_for(lock, std::chrono::microseconds(microseconds_consumption_time));
+		}
 		m_waitingCV.notify_one();
 	}
 
@@ -298,7 +304,7 @@ private:
 
 		for (size_t waitingQueue = 0; waitingQueue < m_queuesCount; ++waitingQueue)
 		{
-			if (!consumers[waitingQueue]->WaitConsuming(m_queueCapacity, std::chrono::microseconds(1000), std::chrono::seconds(20)))
+			if (!consumers[waitingQueue]->WaitConsuming(m_queueCapacity, std::chrono::microseconds(1000), std::chrono::seconds(59)))
 			{
 				std::stringstream ss;
 				ss << "Items are not consumed at time. Consumed " << consumers[waitingQueue]->ConsumedCount() << ", need " << m_queueCapacity;
@@ -312,9 +318,9 @@ private:
 
 	void Work() 
 	{
-		while (m_state != WorkerState::CONSUMED)
+		try
 		{
-			try 
+			while (m_state != WorkerState::CONSUMED)
 			{
 				if (m_state == WorkerState::FULLFILLING)
 				{
@@ -329,11 +335,13 @@ private:
 					WaitAndSee();
 				}
 			}
-			catch (const std::exception& ex)
-			{
-				cout << ex.what() << endl;
-			}
-
+		}
+		catch (const std::exception& ex)
+		{
+			cout << ex.what() << endl;
+			char c;
+			cin >> c;
+			exit(1);
 		}
 	}
 
@@ -426,7 +434,7 @@ ScheduleChart MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer(Factory& factor
 		std::unique_lock<decltype(waitLocker)> waitLock(waitLocker);
 		while (!AreWorkersFullfilled<decltype(workers)>(&workers))
 		{
-			if (!waitCV.wait_for(waitLock, std::chrono::seconds(5), std::bind(&AreWorkersFullfilled<decltype(workers)>, &workers)))
+			if (!waitCV.wait_for(waitLock, std::chrono::seconds(15), std::bind(&AreWorkersFullfilled<decltype(workers)>, &workers)))
 			{
 				throw std::runtime_error("Fullfilling is too long");
 			}
@@ -444,7 +452,7 @@ ScheduleChart MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer(Factory& factor
 		waitLock.lock();
 		while (!AreWorkersConsumed<decltype(workers)>(&workers))
 		{
-			if (waitCV.wait_for(waitLock, std::chrono::seconds(100), std::bind(&AreWorkersConsumed<decltype(workers)>, &workers)) == false)
+			if (waitCV.wait_for(waitLock, std::chrono::seconds(150), std::bind(&AreWorkersConsumed<decltype(workers)>, &workers)) == false)
 			{
 				throw std::runtime_error("Consumption is too long");
 			}
@@ -466,19 +474,19 @@ ScheduleChart MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer(Factory& factor
 	return chart;
 }
 
-template<typename MultiQueueProcessor, size_t items_count>
+template<typename MultiQueueProcessor, size_t items_count, size_t microseconds_consumption_time>
 ScheduleChart testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer(size_t queues_count, size_t threadsCount)
 {
-	auto factory = SimpleFactory<int, int, QuickConsumer<int, int>, MultiQueueProcessor, ItemsGenerator<int, int>>();
-	return MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer<int, int, QuickConsumer<int, int>, decltype(factory)>(
+	auto factory = SimpleFactory<int, int, QuickConsumer<int, int, microseconds_consumption_time>, MultiQueueProcessor, ItemsGenerator<int, int>>();
+	return MultiQueue_Fullfill_And_WaitTillTheEndWithConsumer<int, int, QuickConsumer<int, int, microseconds_consumption_time>, decltype(factory)>(
 		factory, queues_count, items_count, threadsCount);
 }
 
-template<typename MultiQueueProcessor1, typename MultiQueueProcessor2, size_t items_count>
+template<typename MultiQueueProcessor1, typename MultiQueueProcessor2, size_t items_count, size_t microseconds_consumption_time>
 void BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer(size_t queues_count, size_t threadsCount, const std::string& title)
 {
-	ScheduleChart schedule1 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<MultiQueueProcessor1, items_count>(queues_count, threadsCount);
-	ScheduleChart schedule2 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<MultiQueueProcessor2, items_count>(queues_count, threadsCount);
+	ScheduleChart schedule1 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<MultiQueueProcessor1, items_count, microseconds_consumption_time>(queues_count, threadsCount);
+	ScheduleChart schedule2 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<MultiQueueProcessor2, items_count, microseconds_consumption_time>(queues_count, threadsCount);
 	BattleChart result;
 	std::cout << title << std::endl;
 	for (auto item : schedule1)
@@ -504,19 +512,21 @@ int main()
 	//	("One Queue with one item processed by one consumer");
 
 
-	const size_t queueCapacity = 1000;
+	const size_t queueCapacity1 = 1000;
 	//BattleTestOneQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
 	//	ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity>,
 	//	OldIntMultiQueueProcT,
 	//	queueCapacity>
 	//	("One Queue with 1000 items processed by one consumer");
 
-	cout << "1. Fullfill each queue of MultiQueue to " << queueCapacity << " items." << endl;
+	cout << "1. Fullfill each queue of MultiQueue to " << queueCapacity1 << " int items." << endl;
 	cout << "2. Consume all items." << endl;
 	cout << "3. Stop queue." << endl;
 	std::cout << std::endl;
 	cout << "Let's get time of each step and play with queues count to check solution." << endl;
 	std::cout << std::endl;
+
+	const size_t microseconds_consumption_time = 0;
 	for (uint8_t power = 0; power < 10; power++)
 	{
 		size_t queues_count = static_cast<size_t>(1llu << power);
@@ -524,27 +534,49 @@ int main()
 		stringstream ss;
 		ss << queues_count << " Queues:";
 		BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity>,
-			SingleThread_MultiQueueProcessor<int, int, queueCapacity>,
-			queueCapacity
-		>(
-			queues_count, threadsCount,
-			ss.str()
-			);
-		//ScheduleChart schedule1 = testMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
-		//	SingleThread_MultiQueueProcessor<int, int>, queueCapacity>(
-		//		queues_count, threadsCount
-		//		);
-		//std::cout << ss.str() << std::endl;
-		//for (auto item : schedule1)
-		//{
-		//	std::cout << item.first << ": " << schedule1[item.first].count() << " milliseconds" << std::endl;
-		//}
-		//std::cout << std::endl;
-
+			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity1>,
+			SingleThread_MultiQueueProcessor<int, int, queueCapacity1>,
+			queueCapacity1, 
+			microseconds_consumption_time
+		>(queues_count, threadsCount, ss.str());
 	}
-	std::cout << "Single thread realization is simple and optimized. It shows better results then more complicated multithreading realization.";
-	std::cout << "But the last one is a pretty raw solution just for now. Wait and see new releases.";
+	cout << "We can see that single thread queue processor is not so bad" << endl;
+
+	cout << "We can see that single thread queue processor is not so bad" << endl;
+
+	const size_t queueCapacity2 = 10000;
+	cout << "But lets try to enlarge queue size to check more long jobs. Queue size" << queueCapacity2 << " and repeat test." << endl;
+	for (uint8_t power = 0; power < 8; power++)
+	{
+		size_t queues_count = static_cast<size_t>(1llu << power);
+		size_t threadsCount = (queues_count > 8) ? 8 : queues_count;
+		stringstream ss;
+		ss << queues_count << " Queues:";
+		BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
+			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity2>,
+			SingleThread_MultiQueueProcessor<int, int, queueCapacity2>,
+			queueCapacity2,
+			microseconds_consumption_time
+		>(queues_count, threadsCount, ss.str());
+	}
+	cout << "Looks like Multi thread queue processing shows better results." << endl;
+	const size_t microseconds_consumption_time1 = 1000;// My computer can't wait  less 1.1 ms
+	cout << "Lets return a queue size back and add delay for a " << microseconds_consumption_time/1000 << " ms to consumer and repeat the first tests suit." << endl;
+	for (uint8_t power = 0; power < 5; power++)
+	{
+		size_t queues_count = static_cast<size_t>(1llu << power);
+		size_t threadsCount = (queues_count > 8) ? 8 : queues_count;
+		stringstream ss;
+		ss << queues_count << " Queues:";
+		BattleTestMultiQueue_Fullfill_And_WaitTillTheEndWithOneFastConsumer<
+			ThreadPerConsumer_MultiQueueProcessor<int, int, queueCapacity1>,
+			SingleThread_MultiQueueProcessor<int, int, queueCapacity1>,
+			queueCapacity1,
+			microseconds_consumption_time
+		>(queues_count, threadsCount, ss.str());
+	}
+	cout << "Looks like Multi thread queue processing is better again." << endl;
+
 	char i;
 	cin >> i;
 	return 0;

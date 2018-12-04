@@ -19,7 +19,7 @@ struct ISingleQueueProcessor
 
 	virtual void Enqueue(Value&& value) = 0;
 
-	virtual bool Dequeue(Value&) = 0;
+	virtual Value Dequeue() = 0;
 
 };
 
@@ -80,9 +80,9 @@ struct SingleQueueProcessor : ISingleQueueProcessor< Key, Value, Queue>
 		m_queue->Enqueue(std::move(value));
 	}
 
-	bool Dequeue(Value& val)
+	Value Dequeue()
 	{
-		return m_queue->Dequeue(val);
+		return m_queue->Dequeue();
 	}
 private:
 	bool WakeUpCondition()
@@ -106,22 +106,21 @@ private:
 	//TODO Move Process in some Worker Class. And request object of Worker from pool of working threads
 	void Proccess()
 	{
-		Value val;
 		while (!m_isStop)
 		{
-			if (!m_queue->Dequeue(val))
-			{
-				WaitNewEvent();
-				continue;
-			}
-
 			try
 			{
 				std::unique_lock<decltype(m_mutex)> lock(m_mutex);
 				if (!m_consumer)
 					continue;
 
-				m_consumer->Consume(*(m_key.get()), val);
+				m_consumer->Consume(*(m_key.get()), m_queue->Dequeue());
+			}
+			catch (const QueueIsEmpty&)
+			{
+				//Dequeue could throw it if there is no more items in queue
+				WaitNewEvent();
+				continue;
 			}
 			catch (const std::exception&)
 			{

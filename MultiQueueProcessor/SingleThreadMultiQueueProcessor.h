@@ -7,7 +7,7 @@
 #include "IMultiQueueProcessor.h"
 
 #define MaxCapacity 1000
-template<typename Key, typename Value, size_t MaxQueueCapacity=MaxCapacity>
+template<typename Key, typename Value, size_t MaxQueueCapacity=MaxCapacity, typename Queue= Queue<Value, MaxQueueCapacity>>
 class SingleThread_MultiQueueProcessor : public IMultiQueueProcessor<Key, Value>
 {
 public:
@@ -31,8 +31,11 @@ public:
 	void Subscribe(Key id, IConsumer<Key, Value> * consumer)
 	{
 		std::lock_guard<std::recursive_mutex> lock{ mtx };
+		if (!running)
+			throw std::runtime_error("Subscribe: Attempt to run a method of the object when it is already stopped.");
+	
 		auto iter = consumers.find(id);
-		if (iter == consumers.end())
+		if (iter != consumers.end())
 			throw std::logic_error("The queue with proposed key is already processing by another consumer.");
 
 		if (!consumer)
@@ -55,20 +58,19 @@ public:
 	void Enqueue(Key id, Value value)
 	{
 		std::lock_guard<std::recursive_mutex> lock{ mtx };
+		if (!running)
+			throw std::runtime_error("Enqueue: Attempt to run a method of the object when it is already stopped.");
+
 		auto iter = queues.find(id);
 
 		if (iter == queues.end())
 		{
-			auto res = queues.emplace(std::make_pair(std::move(id), std::list<Value>()));
+			auto res = queues.emplace(std::make_pair(std::move(id), Queue()));
 			iter = res.first;
 		}
 
-		if (iter->second.size() >= MaxQueueCapacity)
-		{
-			throw std::overflow_error("on enqueue: Max capacity of queue is reached");
-		}
 
-		iter->second.push_back(std::move(value));
+		iter->second.Enqueue(std::move(value));
 		waitCV.notify_one();
 	}
 
@@ -82,13 +84,7 @@ public:
 			throw std::invalid_argument("Dequeue: The queue is not found");
 		}
 
-		if (iter->second.empty())
-		{
-			throw std::out_of_range("The queue is empty");
-		}
-		auto front = iter->second.front();
-		iter->second.pop_front();
-		return front;
+		return iter->second.Dequeue();
 	}
 
 protected:
@@ -99,7 +95,7 @@ protected:
 		for (auto consumerIter = consumers.begin(); consumerIter != consumers.end(); ++consumerIter)
 		{
 			auto queueIter = queues.find(consumerIter->first);
-			if ((queueIter != queues.end()) && !queueIter->second.empty())
+			if ((queueIter != queues.end()) && !queueIter->second.IsEmpty())
 			{
 				result = true;
 			}
@@ -118,16 +114,29 @@ protected:
 			std::lock_guard<std::recursive_mutex> lock{ mtx };
 			for (auto consumerIter = consumers.begin(); consumerIter != consumers.end(); ++consumerIter)
 			{
-				try{
-					auto queueIter = queues.find(consumerIter->first);
-					if (queueIter != queues.end() && !queueIter->second.empty())
+				auto queueIter = queues.find(consumerIter->first);
+				if (queueIter != queues.end() && !queueIter->second.IsEmpty())
+				{
+					try
 					{
+						// Is it possibe to catch some exception here from Consume? There is no nothrow on interface
 						consumerIter->second->Consume(queueIter->first, Dequeue(queueIter->first));
 					}
-				}
-				catch (const std::out_of_range& ex)
-				{
-					//INFO about it. But with global lock it shouldn't happen.
+					catch (const QueueIsEmpty&)
+					{
+						//Dequeue() could throw QueueIsEmpty if there is no more items in queue
+						//INFO about it. But with global lock it shouldn't be happened.
+					}
+					catch (const std::exception&)
+					{
+						//log ex.what()
+					}
+					catch (...)
+					{
+						//ERR message and stop. Need to know what could be raised except std::exceptions
+						running = false;
+					}
+
 				}
 			}
 		}
@@ -135,7 +144,7 @@ protected:
 
 protected:
 	std::map<Key, IConsumer<Key, Value> *> consumers;
-	std::map<Key, std::list<Value>> queues;
+	std::map<Key, Queue> queues;
 
 	std::mutex waitMutex;
 	std::condition_variable waitCV;

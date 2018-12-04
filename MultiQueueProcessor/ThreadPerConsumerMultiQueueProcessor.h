@@ -30,7 +30,7 @@ struct QueueNode
 template<typename Key, typename Value, 
 	size_t MaxQueueCapacity = MAX_QUEUE_CAPACITY,
 	size_t MaxQueuesCapacity = MAX_QUEUES_CAPACITY,
-	typename Queue = Queue<Key, MaxQueueCapacity>,
+	typename Queue = LockedQueueWithNotifications<Key, MaxQueueCapacity>,
 	typename QueueProcessorT = SingleQueueProcessor<Key, Value, Queue>>
 struct ThreadPerConsumer_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 {
@@ -137,8 +137,8 @@ struct ThreadPerConsumer_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		{
 			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
 		}
-		auto iter = m_multiQueue.find(id);
 
+		auto iter = m_multiQueue.find(id);
 		if (iter == m_multiQueue.end())
 		{
 			//A queue with the Key is not found 
@@ -151,12 +151,7 @@ struct ThreadPerConsumer_MultiQueueProcessor : IMultiQueueProcessor<Key, Value>
 		{
 			throw std::runtime_error("ThreadPerConsumer_MultiQueueProcessor: Attempt of run a method of the object when it is already stopped.");
 		}
-		Value tmpVal;
-		if (!iter->second.queueProcessor->Dequeue(tmpVal))
-		{
-			throw std::out_of_range("The queue is empty"); 
-		}
-		return tmpVal;
+		return iter->second.queueProcessor->Dequeue();
 	}
 
 private:

@@ -8,10 +8,43 @@ struct Queue : IQueue<Value, MaxQueueCapacity>
 {
 	using QueueType = IQueue<Value, MaxQueueCapacity>;
 
-	Queue(QueueType::NotifySubscriberT notificationSubscriber) : IQueue(notificationSubscriber)
+	virtual ~Queue() = default;
+
+	void Enqueue(Value&& value) override
+	{
+		if (m_queue.size() >= m_maxCapacity)
+			throw std::overflow_error("on enqueue: Max capacity of queue is reached");
+
+		m_queue.emplace(std::move(value));
+	}
+
+	Value Dequeue() override
+	{
+		if (m_queue.empty())
+			throw QueueIsEmpty();
+
+		Value value(std::move(m_queue.front()));
+		m_queue.pop();
+		return std::move(value);
+	}
+
+	bool IsEmpty() override
+	{
+		return m_queue.empty();
+	}
+private:
+	std::queue<Value> m_queue;
+};
+
+template<typename Value, size_t MaxQueueCapacity>
+struct LockedQueueWithNotifications : IQueueWithNotifications<Value, MaxQueueCapacity>
+{
+	using QueueType = IQueueWithNotifications<Value, MaxQueueCapacity>;
+
+	LockedQueueWithNotifications(QueueType::NotifySubscriberT notificationSubscriber) : IQueueWithNotifications(notificationSubscriber)
 	{}
 
-	virtual ~Queue() = default;
+	virtual ~LockedQueueWithNotifications() = default;
 
 	void Enqueue(Value&& value) override
 	{
@@ -24,16 +57,15 @@ struct Queue : IQueue<Value, MaxQueueCapacity>
 		m_notifySubscriber();
 	}
 
-	bool Dequeue(Value& value) override
+	Value Dequeue() override
 	{
 		std::lock_guard<decltype(m_mutex)> lock{ m_mutex };
 		if (m_queue.empty())
-		{
-			return false;
-		}
-		value = std::move(m_queue.front());
+			throw QueueIsEmpty();
+
+		Value value(std::move(m_queue.front()));
 		m_queue.pop();
-		return true;
+		return std::move(value);
 	}
 
 	bool IsEmpty() override
